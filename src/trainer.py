@@ -1,9 +1,12 @@
 import time
+import os 
+
 
 import torch
 import numpy as np
 import torch.nn as nn
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 from src.utils.early_stoping import EarlyStopping
 
@@ -15,19 +18,23 @@ class Trainer:
 
     def __init__(self, model, epochs: int = 10, lr: float = 0.01, opt: str = 'SGD',
                  batch_size: int = 10, seed: int = 42, verbose: bool = True,
-                 criterion=nn.CrossEntropyLoss()):
+                 criterion=nn.CrossEntropyLoss(), eval_criterion = None, save_path: str = "./models"):
         self.seed = seed
         self.device = torch.device(Trainer.get_current_device())
         self.criterion = criterion
         self.lr = lr
         self.epochs = epochs
         self.opt = opt
-        self.batch_size = batch_size
         self.verbose = verbose
         self.shuffle = True
+        if eval_criterion:
+            self.eval_criterion = eval_criterion
+        else:
+            self.eval_criterion = criterion
         self.train_loss = None
         self.val_loss = None
         self.best_epoch = None
+        self.base_save_path = save_path
         self.__set_seed()
         self.__instantiate_model(model)
         self.__instantiate_optimizer()
@@ -79,46 +86,56 @@ class Trainer:
         correct = torch.eq(pred.cpu(), true.cpu()).int()
         return float(correct.sum()) / float(correct.numel())
 
-    def __train_model(self, dataset):
-        # Instantiate the dataloader from dataset
-        dataloader = DataLoader(dataset, self.batch_size, shuffle=True)
+    def __train_model(self, dataloader):
         # set the model in training mode
         self.model.train()
         # stores the loss
         train_losses, train_accuracy = [], []
-        for X, y in dataloader:
+        if self.verbose:
+            generator = tqdm(dataloader, total=dataloader.__len__(), leave=True, desc="Training on the epoch...")
+        else:
+            generator = dataloader
+        # losses = []
+        for X, y in generator:
             # send input to device
             X, y = self.to_device((X, y))
             # zero out previous accumulated gradients
             self.optimizer.zero_grad()
             # perform forward pass and calculate accuracy + loss
             outputs = self.model(X)
-            loss = self.criterion(outputs, y.long())
+            loss = self.criterion(outputs, y)
+            train_losses.append(loss.item())
+            if self.verbose:
+                generator.set_description(f"Loss is: {round(np.mean(train_losses), 3)}")
             # perform backpropagation and update model parameters
             loss.backward()
+ 
             self.optimizer.step()
 
-            train_losses.append(loss.item())
             train_accuracy.append(self.accuracy(outputs, y))
 
         return np.mean(train_losses), np.mean(train_accuracy)
 
     @torch.no_grad()
-    def __evaluate_model(self, dataset):
-        # Instantiate the dataloader from dataset
-        dataloader = DataLoader(dataset, self.batch_size, shuffle=self.shuffle)
+    def __evaluate_model(self, dataloader):
         # Allows to evaluate on dataloader or predict on datalaoder
         # set the model in eval mode
         self.model.eval()
         losses, accuracy, predictions = [], [], []
-        for X, y in dataloader:
+        if self.verbose:
+            generator = tqdm(dataloader, leave=True, total=dataloader.__len__(), desc="Evaluating model...")
+        else:
+            generator = dataloader
+        for X, y in generator:
             X, y = self.to_device((X, y))
             # perform forward pass and calculate accuracy + loss
             outputs = self.model(X)
-            loss = self.criterion(outputs, y.long())
+            loss = self.criterion(outputs, y)
+            losses.append(loss.item())
+            if self.verbose:
+                generator.set_description(f"val loss: {round(np.mean(losses), 3)}")
 
             predictions.append(self.compute_argmax(outputs))
-            losses.append(loss.item())
             accuracy.append(self.accuracy(outputs, y))
         return np.mean(losses), np.mean(accuracy), predictions
 
@@ -141,11 +158,16 @@ class Trainer:
     def fit(self, dataset_train, dataset_val):
         # Code to update over here lots of possibly unbounds
         my_es = EarlyStopping()
+        generator = range(1, self.epochs + 1)
+        if self.verbose:
+            print("Starting the trainning ... ")
 
-        for epoch in range(1, self.epochs + 1):
+        for epoch in generator:
             start_time = time.time()
             train_loss_mean, train_acc_mean = self.__train_model(dataset_train)
             val_loss_mean, val_acc_mean, _ = self.__evaluate_model(dataset_val)
+            if self.verbose:
+                print(f"Epoch {epoch} finished with train_loss: {train_loss_mean}, and val_loss: {val_loss_mean}")
 
             break_it = self.__compute_early_stopping(
                 epoch, my_es, val_loss_mean)
@@ -153,7 +175,7 @@ class Trainer:
                 break
 
             # to be able to restore the best weights with the best epoch
-            torch.save(self.model.state_dict(), f'model_{epoch}.pt')
+            torch.save(self.model.state_dict(), os.path.join(self.base_save_path, f'base_model_{self.lr}_{epoch}.pt'))
 
         if self.verbose:
             self.__compute_verbose_train(epoch, start_time, train_loss_mean, val_loss_mean, train_acc_mean,
@@ -171,7 +193,6 @@ class Trainer:
         self.model.load_state_dict(torch.load(path, map_location=self.device))
 
     def predict(self, dataset):
-        self.batch_size = 1
         self.shuffle = False
         self.load_model()
         loss_mean, acc_mean, predictions = self.__evaluate_model(dataset)
