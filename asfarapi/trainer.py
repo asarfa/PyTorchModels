@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Tuple, Optional
 import time
 import os
 
@@ -6,6 +6,7 @@ import os
 import torch
 import numpy as np
 import torch.nn as nn
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from asfarapi.utils import EarlyStopping
@@ -24,8 +25,8 @@ class Trainer:
         opt: str = 'SGD',
         seed: int = 42,
         verbose: bool = True,
-        criterion=nn.CrossEntropyLoss(),
-        eval_criterion=None,
+        criterion: nn.Module = nn.CrossEntropyLoss(),
+        eval_criterion: Optional[nn.Module] = None,
         save_path: str = "./models",
         transforms: List[object] = []
     ):
@@ -51,22 +52,22 @@ class Trainer:
         self.__instantiate_optimizer()
 
     @staticmethod
-    def get_current_device():
+    def get_current_device() -> str:
         if torch.cuda.is_available():
             return "cuda"
         if torch.backends.mps.is_available():
             return 'mps'
         return "cpu"
 
-    def to_device(self, data):
+    def to_device(self, data) -> torch.Tensor:
         if isinstance(data, (list, tuple)):
             return [self.to_device(x) for x in data]
         return data.to(self.device, non_blocking=True)
 
-    def __set_seed(self):
+    def __set_seed(self) -> None:
         torch.manual_seed(self.seed)
 
-    def __instantiate_model(self, model: torch.nn.Module):
+    def __instantiate_model(self, model: torch.nn.Module) -> None:
         result = self.to_device(model)
         if isinstance(result, torch.nn.Module):
             self.model = result
@@ -74,7 +75,7 @@ class Trainer:
             print("Error is due to model not being a Module torch")
             raise Exception
 
-    def __instantiate_optimizer(self):
+    def __instantiate_optimizer(self) -> None:
         if self.opt == 'Adam':
             self.optimizer = torch.optim.Adam(
                 self.model.parameters(), lr=self.lr)
@@ -88,23 +89,24 @@ class Trainer:
             raise ValueError(f'{self.optimizer} has not been implemented')
 
     @staticmethod
-    def compute_argmax(pred):
+    def compute_argmax(pred: torch.Tensor) -> torch.Tensor:
         pred = torch.argmax(torch.exp(torch.log_softmax(pred, dim=1)), dim=1)
         return pred
 
-    def accuracy(self, pred, true):
+    def accuracy(self, pred: torch.Tensor, true: torch.Tensor) -> float:
         pred = self.compute_argmax(pred)
         correct = torch.eq(pred.cpu(), true.cpu()).int()
         return float(correct.sum()) / float(correct.numel())
 
-    def __train_model(self, dataloader):
+    def __train_model(self, dataloader: DataLoader) -> Tuple[np.ndarray, np.ndarray]:
         # set the model in training mode
         self.model.train()
         # stores the loss
         train_losses, train_accuracy = [], []
         if self.verbose:
-            generator = tqdm(dataloader, total=dataloader.__len__(
-            ), leave=True, desc="Training on the epoch...")
+            generator = tqdm(
+                dataloader, leave=True, desc="Training on the epoch..."
+            )
         else:
             generator = dataloader
         # losses = []
@@ -133,14 +135,14 @@ class Trainer:
         return np.mean(train_losses), np.mean(train_accuracy)
 
     @torch.no_grad()
-    def __evaluate_model(self, dataloader):
+    def __evaluate_model(self, dataloader: DataLoader):
         # Allows to evaluate on dataloader or predict on datalaoder
         # set the model in eval mode
         self.model.eval()
         losses, accuracy, predictions = [], [], []
         if self.verbose:
             generator = tqdm(
-                dataloader, leave=True, total=dataloader.__len__(), desc="Evaluating model...")
+                dataloader, leave=True, desc="Evaluating model...")
         else:
             generator = dataloader
         for X, y in generator:
@@ -157,7 +159,7 @@ class Trainer:
             accuracy.append(self.accuracy(outputs, y))
         return np.mean(losses), np.mean(accuracy), predictions
 
-    def __compute_early_stopping(self, epoch, my_es, val_loss_mean):
+    def __compute_early_stopping(self, epoch: int, my_es: EarlyStopping, val_loss_mean: np.ndarray) -> bool:
         break_it = False
         my_es(val_loss_mean)
         if my_es.early_stop:
@@ -168,18 +170,30 @@ class Trainer:
             break_it = True
         return break_it
 
-    def __compute_verbose_train(self, epoch, start_time, train_loss_mean, val_loss_mean, train_acc_mean, val_acc_mean):
+    def __compute_verbose_train(
+        self,
+        epoch: int,
+        start_time: float,
+        train_loss_mean: np.ndarray,
+        val_loss_mean: np.ndarray,
+        train_acc_mean: np.ndarray,
+        val_acc_mean: np.ndarray
+    ) -> None:
         print(
-            "Epoch [{}] took {:.2f}s | train_loss: {:.4f}, train_acc: {:.4f}, val_loss: {:.4f}, val_acc: {:.4f}".format(
-                epoch, time.time() - start_time, train_loss_mean, train_acc_mean, val_loss_mean, val_acc_mean))
+            f"""Epoch [{epoch}] took {time.time() - start_time:.2f}s | \
+                train_loss: {train_loss_mean:.4f}, \
+                train_acc: {train_acc_mean:.4f}, \
+                val_loss: {val_loss_mean:.4f}, \
+                val_acc: {val_acc_mean:.4f}"""
+        )
 
-    def update_lr(self, epoch):
+    def update_lr(self, epoch: int) -> None:
         if epoch == 30:
             self.lr *= 0.8
         if epoch == 25:
             self.lr *= 0.8
 
-    def fit(self, dataset_train, dataset_val):
+    def fit(self, dataset_train: DataLoader, dataset_val: DataLoader) -> None:
         # Code to update over here lots of possibly unbounds
         my_es = EarlyStopping(tolerance=20)
         generator = range(1, self.epochs + 1)
@@ -202,7 +216,7 @@ class Trainer:
 
             # to be able to restore the best weights with the best epoch
             torch.save(self.model.state_dict(), os.path.join(
-                self.base_save_path, f'base_model_{self.lr}_{epoch}.pt'))
+                self.base_save_path, f'model_{epoch}.pt'))
 
         if self.verbose:
             self.__compute_verbose_train(epoch, start_time, train_loss_mean, val_loss_mean, train_acc_mean,
@@ -215,14 +229,15 @@ class Trainer:
         self.train_acc = train_acc_mean
         self.val_acc = val_acc_mean
 
-    def load_model(self):
-        path = f'model_{self.best_epoch}.pt'
+    def load_model(self) -> None:
+        path = os.path.join(self.base_save_path, f'model_{self.best_epoch}.pt')
         self.model.load_state_dict(torch.load(path, map_location=self.device))
 
-    def predict(self, dataset):
+    def predict(self, dataset: DataLoader) -> torch.Tensor:
         self.shuffle = False
         self.load_model()
         loss_mean, acc_mean, predictions = self.__evaluate_model(dataset)
         print(
-            f'The testing loss is {loss_mean}, the testing acc is {acc_mean}')
+            f'The testing loss is {loss_mean}, the testing acc is {acc_mean}'
+        )
         return predictions

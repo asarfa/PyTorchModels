@@ -181,13 +181,13 @@ ignore-on-opaque-inference=yes
 # List of class names for which member attributes should not be checked (useful
 # for classes with dynamically set attributes). This supports the use of
 # qualified names.
-ignored-classes=optparse.Values,thread._local,_thread._local
+ignored-classes=numpy,torch,cv2
 
 # List of module names for which member attributes should not be checked
 # (useful for modules/projects where namespaces are manipulated during runtime
 # and thus existing member attributes cannot be deduced by static analysis). It
 # supports qualified module names, as well as Unix pattern matching.
-ignored-modules=
+ignored-modules=numpy,torch,cv2
 
 # Show a hint with possible names when a member name was not found. The aspect
 # of finding the hint is based on edit distance.
@@ -352,7 +352,10 @@ good-names=i,
            VP,
            FP,
            FN,
-           VN
+           VN,
+           lr,
+           X,
+           Y
 
 # Good variable names regexes, separated by a comma. If names match any regex,
 # they will always be accepted
