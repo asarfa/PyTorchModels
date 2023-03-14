@@ -1,5 +1,6 @@
 import time
-import os 
+import os
+from typing import List
 
 
 import torch
@@ -18,12 +19,13 @@ class Trainer:
 
     def __init__(self, model, epochs: int = 10, lr: float = 0.01, opt: str = 'SGD',
                  batch_size: int = 10, seed: int = 42, verbose: bool = True,
-                 criterion=nn.CrossEntropyLoss(), eval_criterion = None, save_path: str = "./models"):
+                 criterion=nn.CrossEntropyLoss(), eval_criterion=None, save_path: str = "./models", transforms: List[object] = []):
         self.seed = seed
         self.device = torch.device(Trainer.get_current_device())
         self.criterion = criterion
         self.lr = lr
         self.epochs = epochs
+        self.transforms = transforms
         self.opt = opt
         self.verbose = verbose
         self.shuffle = True
@@ -92,12 +94,16 @@ class Trainer:
         # stores the loss
         train_losses, train_accuracy = [], []
         if self.verbose:
-            generator = tqdm(dataloader, total=dataloader.__len__(), leave=True, desc="Training on the epoch...")
+            generator = tqdm(dataloader, total=dataloader.__len__(
+            ), leave=True, desc="Training on the epoch...")
         else:
             generator = dataloader
         # losses = []
         for X, y in generator:
             # send input to device
+            if self.transforms != []:
+                for t in self.transforms:
+                    X, y = t(X, y)
             X, y = self.to_device((X, y))
             # zero out previous accumulated gradients
             self.optimizer.zero_grad()
@@ -106,10 +112,11 @@ class Trainer:
             loss = self.criterion(outputs, y)
             train_losses.append(loss.item())
             if self.verbose:
-                generator.set_description(f"Loss is: {round(np.mean(train_losses), 3)}")
+                generator.set_description(
+                    f"Loss is: {round(np.mean(train_losses), 3)}")
             # perform backpropagation and update model parameters
             loss.backward()
- 
+
             self.optimizer.step()
 
             train_accuracy.append(self.accuracy(outputs, y))
@@ -123,7 +130,8 @@ class Trainer:
         self.model.eval()
         losses, accuracy, predictions = [], [], []
         if self.verbose:
-            generator = tqdm(dataloader, leave=True, total=dataloader.__len__(), desc="Evaluating model...")
+            generator = tqdm(
+                dataloader, leave=True, total=dataloader.__len__(), desc="Evaluating model...")
         else:
             generator = dataloader
         for X, y in generator:
@@ -133,7 +141,8 @@ class Trainer:
             loss = self.criterion(outputs, y)
             losses.append(loss.item())
             if self.verbose:
-                generator.set_description(f"val loss: {round(np.mean(losses), 3)}")
+                generator.set_description(
+                    f"val loss: {round(np.mean(losses), 3)}")
 
             predictions.append(self.compute_argmax(outputs))
             accuracy.append(self.accuracy(outputs, y))
@@ -155,9 +164,15 @@ class Trainer:
             "Epoch [{}] took {:.2f}s | train_loss: {:.4f}, train_acc: {:.4f}, val_loss: {:.4f}, val_acc: {:.4f}".format(
                 epoch, time.time() - start_time, train_loss_mean, train_acc_mean, val_loss_mean, val_acc_mean))
 
-    def fit(self, dataset_train, dataset_val):
+    def update_lr(self, epoch):
+        if epoch == 30:
+            self.lr *= 0.8
+        if epoch == 25:
+            self.lr *= 0.8
+
+    def fit(self, dataset_train, dataset_val, transforms=[]):
         # Code to update over here lots of possibly unbounds
-        my_es = EarlyStopping()
+        my_es = EarlyStopping(tolerance=20)
         generator = range(1, self.epochs + 1)
         if self.verbose:
             print("Starting the trainning ... ")
@@ -167,15 +182,18 @@ class Trainer:
             train_loss_mean, train_acc_mean = self.__train_model(dataset_train)
             val_loss_mean, val_acc_mean, _ = self.__evaluate_model(dataset_val)
             if self.verbose:
-                print(f"Epoch {epoch} finished with train_loss: {train_loss_mean}, and val_loss: {val_loss_mean}")
+                print(
+                    f"Epoch {epoch} finished with train_loss: {train_loss_mean}, and val_loss: {val_loss_mean}")
 
             break_it = self.__compute_early_stopping(
                 epoch, my_es, val_loss_mean)
+            # self.update_lr(epoch)
             if break_it:
                 break
 
             # to be able to restore the best weights with the best epoch
-            torch.save(self.model.state_dict(), os.path.join(self.base_save_path, f'base_model_{self.lr}_{epoch}.pt'))
+            torch.save(self.model.state_dict(), os.path.join(
+                self.base_save_path, f'base_model_{self.lr}_{epoch}.pt'))
 
         if self.verbose:
             self.__compute_verbose_train(epoch, start_time, train_loss_mean, val_loss_mean, train_acc_mean,
