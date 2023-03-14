@@ -8,7 +8,7 @@ To use this repository as a normal python package and still be able to dev on it
 
 ## Install from link
 
-Simply run this command: `pip install https://github.com/asarfa/PyTorchModels`
+Simply run this command: `pip install https://github.com/asarfa/PyTorchModels` This is currently not working
 
 ## Firsts steps into the easy life ...
 
