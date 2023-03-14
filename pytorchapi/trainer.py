@@ -1,15 +1,14 @@
+from typing import List
 import time
 import os
-from typing import List
 
 
 import torch
 import numpy as np
 import torch.nn as nn
-from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.utils.early_stoping import EarlyStopping
+from pytorchapi.utils.early_stoping import EarlyStopping
 
 
 class Trainer:
