@@ -179,7 +179,7 @@ class Trainer:
         if epoch == 25:
             self.lr *= 0.8
 
-    def fit(self, dataset_train, dataset_val, transforms=[]):
+    def fit(self, dataset_train, dataset_val):
         # Code to update over here lots of possibly unbounds
         my_es = EarlyStopping(tolerance=20)
         generator = range(1, self.epochs + 1)
