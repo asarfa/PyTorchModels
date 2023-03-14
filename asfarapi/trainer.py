@@ -8,7 +8,7 @@ import numpy as np
 import torch.nn as nn
 from tqdm import tqdm
 
-from pytorchapi.utils.early_stoping import EarlyStopping
+from asfarapi.utils import EarlyStopping
 
 
 class Trainer:
@@ -16,9 +16,19 @@ class Trainer:
     This class allows to compute the main methods to fit and evaluate a model and predict output on testing set
     """
 
-    def __init__(self, model, epochs: int = 10, lr: float = 0.01, opt: str = 'SGD',
-                 batch_size: int = 10, seed: int = 42, verbose: bool = True,
-                 criterion=nn.CrossEntropyLoss(), eval_criterion=None, save_path: str = "./models", transforms: List[object] = []):
+    def __init__(
+        self,
+        model,
+        epochs: int = 10,
+        lr: float = 0.01,
+        opt: str = 'SGD',
+        seed: int = 42,
+        verbose: bool = True,
+        criterion=nn.CrossEntropyLoss(),
+        eval_criterion=None,
+        save_path: str = "./models",
+        transforms: List[object] = []
+    ):
         self.seed = seed
         self.device = torch.device(Trainer.get_current_device())
         self.criterion = criterion

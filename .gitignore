@@ -3,3 +3,5 @@
 USPS
 *.pt
 **/__pycache__
+build/
+asfarapi.egg*
