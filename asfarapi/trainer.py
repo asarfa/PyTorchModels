@@ -1,15 +1,14 @@
+from typing import List
 import time
 import os
-from typing import List
 
 
 import torch
 import numpy as np
 import torch.nn as nn
-from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.utils.early_stoping import EarlyStopping
+from asfarapi.utils import EarlyStopping
 
 
 class Trainer:
@@ -17,9 +16,19 @@ class Trainer:
     This class allows to compute the main methods to fit and evaluate a model and predict output on testing set
     """
 
-    def __init__(self, model, epochs: int = 10, lr: float = 0.01, opt: str = 'SGD',
-                 batch_size: int = 10, seed: int = 42, verbose: bool = True,
-                 criterion=nn.CrossEntropyLoss(), eval_criterion=None, save_path: str = "./models", transforms: List[object] = []):
+    def __init__(
+        self,
+        model,
+        epochs: int = 10,
+        lr: float = 0.01,
+        opt: str = 'SGD',
+        seed: int = 42,
+        verbose: bool = True,
+        criterion=nn.CrossEntropyLoss(),
+        eval_criterion=None,
+        save_path: str = "./models",
+        transforms: List[object] = []
+    ):
         self.seed = seed
         self.device = torch.device(Trainer.get_current_device())
         self.criterion = criterion
@@ -170,7 +179,7 @@ class Trainer:
         if epoch == 25:
             self.lr *= 0.8
 
-    def fit(self, dataset_train, dataset_val, transforms=[]):
+    def fit(self, dataset_train, dataset_val):
         # Code to update over here lots of possibly unbounds
         my_es = EarlyStopping(tolerance=20)
         generator = range(1, self.epochs + 1)
